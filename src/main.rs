@@ -1,17 +1,14 @@
 //! Default Compute@Edge template program.
+extern crate log_fastly;
+mod spacexTLE;
+use fastly::http::{Method, StatusCode};
+use fastly::{Body, Error, Request, Response, ResponseExt};
+use spacexTLE::spacex_tle;
+use serde_json::json;
 
-use fastly::http::{HeaderValue, Method, StatusCode};
-use fastly::request::CacheOverride;
-use fastly::{Body, Error, Request, RequestExt, Response, ResponseExt};
+const N2YO_API_KEY: &str = "YBLNQJ-JUG3KB-XS5BRT-1JX2";
 
-/// The name of a backend server associated with this service.
-///
-/// This should be changed to match the name of your own backend. See the the `Hosts` section of
-/// the Fastly WASM service UI for more information.
-const BACKEND_NAME: &str = "backend_name";
-
-/// The name of a second backend associated with this service.
-const OTHER_BACKEND_NAME: &str = "other_backend_name";
+const TXN_LIMIT: i32 = 6;
 
 /// The entry point for your application.
 ///
@@ -21,45 +18,34 @@ const OTHER_BACKEND_NAME: &str = "other_backend_name";
 ///
 /// If `main` returns an error, a 500 error response will be delivered to the client.
 #[fastly::main]
-fn main(mut req: Request<Body>) -> Result<impl ResponseExt, Error> {
-    // Make any desired changes to the client request.
-    req.headers_mut()
-        .insert("Host", HeaderValue::from_static("example.com"));
-
+fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
+    log_fastly::init_simple("stdout", log::LevelFilter::Debug);
+    log::debug!("*******************************************************");
+    log::debug!("Request: {} {}", req.method(), req.uri());
+    
     // We can filter requests that have unexpected methods.
-    const VALID_METHODS: [Method; 3] = [Method::HEAD, Method::GET, Method::POST];
+    const VALID_METHODS: [Method; 1] = [Method::GET];
     if !(VALID_METHODS.contains(req.method())) {
         return Ok(Response::builder()
             .status(StatusCode::METHOD_NOT_ALLOWED)
             .body(Body::from("This method is not allowed"))?);
     }
-
-    // Pattern match on the request method and path.
-    match (req.method(), req.uri().path()) {
-        // If request is a `GET` to the `/` path, send a default response.
-        (&Method::GET, "/") => Ok(Response::builder()
-            .status(StatusCode::OK)
-            .body(Body::from("Welcome to Fastly Compute@Edge!"))?),
-
-        // If request is a `GET` to the `/backend` path, send to a named backend.
-        (&Method::GET, "/backend") => {
-            // Request handling logic could go here...
-            // E.g., send the request to an origin backend and then cache the
-            // response for one minute.
-            *req.cache_override_mut() = CacheOverride::ttl(60);
-            Ok(req.send(BACKEND_NAME)?)
-        }
-
-        // If request is a `GET` to a path starting with `/other/`.
-        (&Method::GET, path) if path.starts_with("/other/") => {
-            // Send request to a different backend and don't cache response.
-            *req.cache_override_mut() = CacheOverride::Pass;
-            Ok(req.send(OTHER_BACKEND_NAME)?)
-        }
-
-        // Catch all other requests and return a 404.
-        _ => Ok(Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(Body::from("The page you requested could not be found"))?),
+   
+    let url_parts = &req.uri().path().split("/").collect::<Vec<&str>>()[1..];
+    if url_parts[0] == "tle" {
+        let mission_id = url_parts[1];
+        let mut spacex_tle = spacex_tle::new(N2YO_API_KEY, TXN_LIMIT);
+        let payload_tles = spacex_tle.payload_tles(mission_id);
+        if payload_tles.is_some() {
+            let json = json!(payload_tles);
+            return Ok(Response::builder().status(StatusCode::OK).header("Content-Type", "application/json").body(Body::from(format!("{}",json))).unwrap());
+        } else { 
+           return Ok(Response::builder().status(StatusCode::NOT_FOUND).body(Body::from(format!("No TLEs found for mission {}", mission_id))).unwrap()); 
+        } 
     }
+
+    let body = Body::from(format!("Invalid request path: {}", req.uri().path())); 
+    let res = Response::builder().status(StatusCode::BAD_REQUEST).body(body).unwrap(); 
+    return Ok(res);
 }
+

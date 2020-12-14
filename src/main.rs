@@ -6,6 +6,7 @@ use fastly::{Body, Error, Request, Response, ResponseExt};
 use serde_json::json;
 use spacex_tle::SpacexTLE;
 
+const LOGGING_ENDPOINT: &str = "stdout";
 const N2YO_API_KEY: &str = "YBLNQJ-JUG3KB-XS5BRT-1JX2";
 
 const TXN_LIMIT: i32 = 6;
@@ -19,7 +20,7 @@ const TXN_LIMIT: i32 = 6;
 /// If `main` returns an error, a 500 error response will be delivered to the client.
 #[fastly::main]
 fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
-    log_fastly::init_simple("stdout", log::LevelFilter::Debug);
+    logging_init();
     log::debug!("*******************************************************");
     log::debug!("Request: {} {}", req.method(), req.uri());
     
@@ -49,3 +50,10 @@ fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
     return Ok(res);
 }
 
+fn logging_init() {
+    log_fastly::Logger::builder()
+        .max_level(log::LevelFilter::Debug)
+        .default_endpoint(LOGGING_ENDPOINT)
+        .init();
+    fastly::log::set_panic_endpoint(LOGGING_ENDPOINT).unwrap();
+}

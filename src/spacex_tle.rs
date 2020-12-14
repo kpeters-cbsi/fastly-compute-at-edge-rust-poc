@@ -1,10 +1,8 @@
 use fastly::{Request, Body, RequestExt, Response};
-use fastly::http::{Method, StatusCode};
+use fastly::http::{Method};
 use fastly::request::CacheOverride;
-use json::{JsonValue};
 use std::collections::HashMap;
 use std::time::Instant;
-use serde::{de, ser, Deserialize};
 use serde_json::{value};
 use log;
 
@@ -13,35 +11,21 @@ const BACKEND_N2YO: &str = "n2yo";
 const SPACEXDATA_URI: &str = "https://api.spacexdata.com/v3/";
 const N2YO_URI: &str = "https://api.n2yo.com/rest/v1/satellite/";
 
-#[derive(Deserialize)]
-struct N2yoResponse {
-  info: N2yoSat,
-  tle: String 
-}
-
-#[derive(Deserialize)]
-struct N2yoSat {
-  satid: i32,
-  satname: String,
-  transactionscount: i32
-}
-
-
 #[derive(Debug)]
-pub struct spacex_tle {
+pub struct SpacexTLE {
   n2yo_api_key: &'static str,
   txn_limit: i32,
   _txn_count: i32,
 }
 
-impl spacex_tle {
-  pub fn new(n2yo_api_key: &'static str, txn_limit: i32) -> spacex_tle {
-    return spacex_tle { n2yo_api_key, txn_limit, _txn_count: 0 };
+impl SpacexTLE {
+  pub fn new(n2yo_api_key: &'static str, txn_limit: i32) -> SpacexTLE {
+    return SpacexTLE { n2yo_api_key, txn_limit, _txn_count: 0 };
   }
 
-  pub fn payload_tles(&mut self, missionId: &str) -> Option<HashMap<String, Vec<String>>> {
+  pub fn payload_tles(&mut self, mission_id: &str) -> Option<HashMap<String, Vec<String>>> {
     let t0 = Instant::now();
-    let norad_ids = self.get_norad_ids_for_mission(missionId)?;
+    let norad_ids = self.get_norad_ids_for_mission(mission_id)?;
     self.log_elapsed(t0, "get NORAD IDs");
 
     let mut payload_tles = HashMap::new();
@@ -108,7 +92,7 @@ impl spacex_tle {
     let mut tles = Vec::new();
     for norad_id in norad_ids {
       let path = format!("tle/{}", norad_id);
-      let response = self.n2yo_request(&path, HashMap::new());
+      let response = self.n2yo_request(&path);
       let tle_str = response.get("tle").unwrap().as_str().unwrap();
       if !tle_str.is_empty() {
           let split: Vec<String> = tle_str.split("\r\n").map(String::from).collect();
@@ -120,11 +104,21 @@ impl spacex_tle {
     return tles
   }
 
-  fn spacexdata_request(&mut self, path: &str, filter: HashMap<&str, &str>) -> value::Value {
+  fn spacexdata_request(&mut self, path: &str, params: HashMap<&str, &str>) -> value::Value {
     let mut uri: String = SPACEXDATA_URI.to_owned();
     uri.push_str(path);
-    uri.push_str("?");
-    uri.push_str(self.n2yo_api_key);
+    if params.len() > 0 {
+      uri.push_str("?");
+      let mut count = 0;
+      for (key, value) in params {
+        let kv = format!("{}={}", key, value);
+        uri.push_str(&kv);
+        if count > 0 {
+          uri.push('&');
+        }
+        count = count + 1;
+      }
+    }
     let response = self.request(Method::GET, &uri, &BACKEND_SPACEXDATA, None, None, None);
     let content_type = response.headers().get("content-type").unwrap();
     if content_type.to_str().unwrap().contains("json") {
@@ -134,7 +128,7 @@ impl spacex_tle {
     }
   }
 
- fn n2yo_request(&mut self, path: &str, filter: HashMap<&str, &str>) -> value::Value {
+ fn n2yo_request(&mut self, path: &str) -> value::Value {
     let mut uri: String = N2YO_URI.to_owned();
     uri.push_str(path);
     uri.push_str("?");

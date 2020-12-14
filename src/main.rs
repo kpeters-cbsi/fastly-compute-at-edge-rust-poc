@@ -1,10 +1,10 @@
 //! Default Compute@Edge template program.
 extern crate log_fastly;
-mod spacexTLE;
+mod spacex_tle;
 use fastly::http::{Method, StatusCode};
 use fastly::{Body, Error, Request, Response, ResponseExt};
-use spacexTLE::spacex_tle;
 use serde_json::json;
+use spacex_tle::SpacexTLE;
 
 const N2YO_API_KEY: &str = "YBLNQJ-JUG3KB-XS5BRT-1JX2";
 
@@ -34,7 +34,7 @@ fn main(req: Request<Body>) -> Result<impl ResponseExt, Error> {
     let url_parts = &req.uri().path().split("/").collect::<Vec<&str>>()[1..];
     if url_parts[0] == "tle" {
         let mission_id = url_parts[1];
-        let mut spacex_tle = spacex_tle::new(N2YO_API_KEY, TXN_LIMIT);
+        let mut spacex_tle = SpacexTLE::new(N2YO_API_KEY, TXN_LIMIT);
         let payload_tles = spacex_tle.payload_tles(mission_id);
         if payload_tles.is_some() {
             let json = json!(payload_tles);

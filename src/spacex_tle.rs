@@ -214,6 +214,9 @@ impl SpacexTLE {
         cache_override: Option<CacheOverride>,
     ) -> Result<Response<Body>, Error> {
         let t0 = Instant::now();
+        // let debug = |msg: &str| { // FIXME - could this be a macro?
+        //     log::debug!("[TXN {}] {}", self.txn_count(), msg);
+        // };
         log::debug!("[TXN {}] {} {}", self.txn_count(), method, uri);
         let mut builder = Request::builder().method(method.as_str()).uri(uri);
 
@@ -235,7 +238,15 @@ impl SpacexTLE {
         cache_override.and_then(|c| Some(*request.cache_override_mut() = c));
         let response = request.send(backend)?;
         log::debug!("Request complete");
-
+        let resp_headers = response.headers().to_owned();
+        let default_header_value = HeaderValue::from_str("").unwrap();
+        let cache = resp_headers.get("X-Cache").unwrap_or(&default_header_value).to_str()?;
+        let cache_hits = resp_headers.get("X-Cache-Hits").unwrap_or(&default_header_value).to_str()?; 
+        let mut log_message = format!("({}) Cache: {}", backend, cache);
+        if cache != "MISS" {
+            log_message = format!(" {} hits: {}", log_message, cache_hits);
+        }
+        log::debug!("[TXN {}] {}", self.txn_count(), log_message);
         let (parts, body) = response.into_parts();
         let body_str = body.into_string();
         log::debug!("Response body: {}", body_str);

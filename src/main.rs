@@ -6,7 +6,7 @@ use fastly::{Body, Error, Request, Response, ResponseExt};
 use serde_json::json;
 use spacex_tle::SpacexTLE;
 
-const LOGGING_ENDPOINT: &str = "get_test_syslog";
+const LOGGING_ENDPOINT: &str = "Syslog";
 const N2YO_API_KEY: &str = "YBLNQJ-JUG3KB-XS5BRT-1JX2";
 const TXN_LIMIT: i64 = 6;
 
